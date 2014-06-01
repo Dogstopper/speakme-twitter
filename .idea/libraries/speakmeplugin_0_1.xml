@@ -1,0 +1,10 @@
+<component name="libraryTable">
+  <library name="speakmeplugin_0_1">
+    <CLASSES>
+      <root url="file://$PROJECT_DIR$/app/build/exploded-aar/speakmeplugin_0_1/res" />
+      <root url="jar://$PROJECT_DIR$/app/build/exploded-aar/speakmeplugin_0_1/classes.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
