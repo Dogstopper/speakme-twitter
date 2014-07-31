@@ -13,6 +13,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
+import mystech.speakme.plugin.actions.ActionBase;
+import mystech.speakme.plugin.actions.ActionHandlerInterfaces;
+import mystech.speakme.plugin.actions.AsyncAction;
 import twitter4j.IDs;
 import twitter4j.Paging;
 import twitter4j.ResponseList;
@@ -39,6 +42,37 @@ public class TwitterHandler {
     public String m_accessSecret;
     public RequestToken m_requestToken;
     private Twitter m_twitter;
+
+    private abstract class TwitterAction extends AsyncAction {
+
+        @Override
+        public void onActionStarted() {
+            if (actionStartedHandler != null) {
+                actionStartedHandler.onActionStarted(this);
+            }
+        }
+
+        @Override
+        public void onActionComplete() {
+            if (actionCompleteHandler != null) {
+                actionCompleteHandler.onActionComplete(this);
+            }
+        }
+
+        @Override
+        public void onActionError(Exception e) {
+            if (actionErrorHandler != null) {
+                actionErrorHandler.onActionError(this,e);
+            }
+        }
+
+        @Override
+        public void onActionSuccess() {
+            if (actionSuccessHandler != null) {
+                actionSuccessHandler.onActionSuccess(this);
+            }
+        }
+    }
 
     TwitterHandler(SharedPreferences prefs) {
         m_consumerKey = CONSUMER_KEY;
@@ -81,11 +115,11 @@ public class TwitterHandler {
         // Allows it to load in the background and still allow the other
         // AsyncTasks to run. In Honeycomb, they are run serially, rather
         // than in parallel.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            loader.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
-        } else {
-            loader.execute();
-        }
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+//            loader.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+//        } else {
+//            loader.execute();
+//        }
      }
 
     public void setUserCache(Map<Long,Pair<String,String>> map) {
@@ -148,28 +182,24 @@ public class TwitterHandler {
     }
 
     //The callback is called when the tweet is complete. It passes true on success, false otherwise
-    public void tweet(String text, final long inReplyTo, final BooleanCallback callback) {
-        class TweetTask extends AsyncTask<String, Void, Boolean> {
-
-            private Exception exception;
-
-            protected Boolean doInBackground(String... tweet) {
+    public TwitterAction tweet(final String text, final long inReplyTo) {
+        class TweetTask extends TwitterAction {
+            public void executeAction() {
                 try {
-                    StatusUpdate st = new StatusUpdate(tweet[0]);
+                    StatusUpdate st = new StatusUpdate(text);
                     if (inReplyTo != -1) {
                         st.inReplyToStatusId(inReplyTo);
                     }
                     twitter4j.Status status = m_twitter.updateStatus(st);
-                    callback.run(true);
+                    onActionComplete();
                 } catch (TwitterException e) {
                     Log.e("LazyTweeter", "ERROR: " + e);
-                    callback.run(false);
+                    onActionError(e);
                 }
-                return true;
             }
         }
 
-        new TweetTask().execute(text);
+        return new TweetTask();
     }
 
     private ResponseList<Status> cache = null;
@@ -249,27 +279,22 @@ public class TwitterHandler {
     }
 
     //The callback is run and passed the result when verification is complete
-    public void verifyCredentials(final BooleanCallback callback) {
-        class TweetTask extends AsyncTask<Void, Void, Boolean> {
-
-            private Exception exception;
-
-            protected Boolean doInBackground(Void... tweet) {
+    public AsyncAction verifyCredentials() {
+        class VerifyAction extends TwitterAction
+        {
+            @Override
+            public void executeAction() {
                 try {
                     m_twitter.verifyCredentials(); //This throws an exception when verification fails
-                    callback.run(true);
+                    onActionComplete();
                 } catch(TwitterException e) {
                     if(e.getErrorCode() != 215) //215 is the error code for the access token is invalid
                         Log.e("LazyTweeter", "ERROR: " + e);
-
-                    callback.run(false);
+                    onActionError(e);
                 }
-                return true;
             }
         }
-
-        new TweetTask().execute();
-
+        return new VerifyAction();
     }
 
     // O(n) or a call to the web.
@@ -321,82 +346,84 @@ public class TwitterHandler {
     }
 
 
-    AsyncTask loader = new AsyncTask<Object, Integer, Void>(){
-
-        private HashMap<Long, Pair<String, String>> copyScreenToUserMap =
+//    AsyncTask loader = new AsyncTask<Object, Integer, Void>(){
+    public AsyncAction getLoaderAction() {
+        final HashMap<Long, Pair<String, String>> copyScreenToUserMap =
                 (HashMap<Long, Pair<String,String>>) screenToUserMap.clone();
 
-        @Override
-        protected synchronized Void doInBackground(Object... voids) {
+        final TwitterAction loader = new TwitterAction() {
+            @Override
+            public void executeAction() {
+                FriendsFollowersResources ffRes = m_twitter.friendsFollowers();
+                ArrayList<Long> ids = new ArrayList();
+                try {
+                    IDs tempIDs = ffRes.getFollowersIDs(-1);
 
-            FriendsFollowersResources ffRes = m_twitter.friendsFollowers();
-            ArrayList<Long> ids = new ArrayList();
-            try {
-                IDs tempIDs = ffRes.getFollowersIDs(-1);
+                    Log.d("TWITTERIFY", Arrays.toString(tempIDs.getIDs()));
 
-                Log.d("TWITTERIFY", Arrays.toString(tempIDs.getIDs()));
-
-                long[] longArray = tempIDs.getIDs();
-                for (long l : longArray) {
-                    if (!copyScreenToUserMap.containsKey(l)) {
-                        ids.add(l);
+                    long[] longArray = tempIDs.getIDs();
+                    for (long l : longArray) {
+                        if (!copyScreenToUserMap.containsKey(l)) {
+                            ids.add(l);
+                        }
                     }
-                }
-                while (tempIDs.hasNext()) {
+                    while (tempIDs.hasNext()) {
+                        longArray = tempIDs.getIDs();
+                        for (long l : longArray) {
+                            if (!copyScreenToUserMap.containsKey(l)) {
+                                ids.add(l);
+                            }
+                        }
+                        tempIDs = ffRes.getFollowersIDs(tempIDs.getNextCursor());
+                    }
+                    tempIDs = ffRes.getFriendsIDs(-1);
                     longArray = tempIDs.getIDs();
                     for (long l : longArray) {
                         if (!copyScreenToUserMap.containsKey(l)) {
                             ids.add(l);
                         }
                     }
-                    tempIDs = ffRes.getFollowersIDs(tempIDs.getNextCursor());
-                }
-                tempIDs = ffRes.getFriendsIDs(-1);
-                longArray = tempIDs.getIDs();
-                for (long l : longArray) {
-                    if (!copyScreenToUserMap.containsKey(l)) {
-                        ids.add(l);
-                    }
-                }
-                while (tempIDs.hasNext()) {
-                    longArray = tempIDs.getIDs();
-                    for (long l : longArray) {
-                        if (!copyScreenToUserMap.containsKey(l)) {
-                            ids.add(l);
+                    while (tempIDs.hasNext()) {
+                        longArray = tempIDs.getIDs();
+                        for (long l : longArray) {
+                            if (!copyScreenToUserMap.containsKey(l)) {
+                                ids.add(l);
+                            }
                         }
+                        tempIDs = ffRes.getFriendsIDs(tempIDs.getNextCursor());
                     }
-                    tempIDs = ffRes.getFriendsIDs(tempIDs.getNextCursor());
-                }
-                for (long id : ids) {
-                    if (!copyScreenToUserMap.containsKey(id)) {
-                        String screenName = getUsernameFromID(id);
-                        String name = getNameFromID(id);
-                        Pair<String,String> map = new Pair<String, String>(screenName, name);
-                        copyScreenToUserMap.put(id, map);
+                    for (long id : ids) {
+                        if (!copyScreenToUserMap.containsKey(id)) {
+                            String screenName = getUsernameFromID(id);
+                            String name = getNameFromID(id);
+                            Pair<String, String> map = new Pair<String, String>(screenName, name);
+                            copyScreenToUserMap.put(id, map);
+                        }
+
                     }
+                    Log.d("TWITTER", "# of discovered names: " + ids.size());
 
+                } catch (TwitterException e) {
+                    Log.d("TWITTERIFY", e.getMessage());
                 }
-                Log.d("TWITTER", "# of discovered names: " + ids.size());
-
-            } catch (TwitterException e) {
-                Log.d("TWITTERIFY", e.getMessage());
             }
-            return null;
-        }
-
-        @Override
-        protected void onPostExecute(Void aVoid) {
-            super.onPostExecute(aVoid);
-            screenToUserMap.putAll(copyScreenToUserMap);
-            for (long id : copyScreenToUserMap.keySet()) {
-                String screenName = copyScreenToUserMap.get(id).first;
-                String name = copyScreenToUserMap.get(id).second;
-                prefs.edit().putString(id +"", screenName+","+name).commit();
+        };
+        loader.registerOnCompleteListener(new ActionHandlerInterfaces.IHandleActionComplete() {
+            @Override
+            public void onActionComplete(ActionBase actionBase) {
+                screenToUserMap.putAll(copyScreenToUserMap);
+                for (long id : copyScreenToUserMap.keySet()) {
+                    String screenName = copyScreenToUserMap.get(id).first;
+                    String name = copyScreenToUserMap.get(id).second;
+                    prefs.edit().putString(id +"", screenName+","+name).commit();
+                }
+                Log.d("TWITTER", "# of discovered names: " + copyScreenToUserMap.keySet().size());
+                loader.onActionSuccess();
             }
-            Log.d("TWITTER", "# of discovered names: " + copyScreenToUserMap.keySet().size());
+        });
+        return loader;
+    }
 
-        }
-    };
 
     // --------- String manipulation -------
     public String twitterify(String text) {

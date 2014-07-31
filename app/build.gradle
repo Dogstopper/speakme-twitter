@@ -2,7 +2,7 @@ apply plugin: 'android'
 
 android {
     compileSdkVersion 19
-    buildToolsVersion "19.0.1"
+    buildToolsVersion "19.1"
 
     defaultConfig {
         minSdkVersion 15
@@ -27,5 +27,5 @@ repositories {
 dependencies {
     compile(name:'twitter4j-core-4.0.1', ext:'jar')
     compile 'com.android.support:appcompat-v7:19.+'
-    compile(name:'speakmeplugin_0_1', ext:'aar')
+    compile(name:'speakmelib-0.3.3', ext:'aar')
 }

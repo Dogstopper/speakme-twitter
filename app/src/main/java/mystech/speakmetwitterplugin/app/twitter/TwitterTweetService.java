@@ -1,11 +1,16 @@
 package mystech.speakmetwitterplugin.app.twitter;
 
+import android.app.Notification;
 import android.content.SharedPreferences;
 import android.util.Log;
 
 import java.util.Arrays;
 
-import mystech.speakme.plugin.app.SpeakMePluginService;
+import mystech.speakme.plugin.SpeakMePluginService;
+import mystech.speakme.plugin.actions.ActionBase;
+import mystech.speakme.plugin.actions.ActionHandlerInterfaces;
+import mystech.speakme.plugin.actions.AsyncAction;
+import mystech.speakme.plugin.utils.UtilInterfaces;
 
 public class TwitterTweetService extends SpeakMePluginService {
     private TwitterHandler handler;
@@ -26,101 +31,124 @@ public class TwitterTweetService extends SpeakMePluginService {
     }
 
     @Override
-    public void performAction(String text) {
-        text = text.replaceFirst("[T|t]witter", "");
-        text = text.replaceFirst("[T|t]weet", "");
-        text = text.trim();
-
+    public void performAction(final String text) {
         // Check that we're logged in.
-        ResultCallback cb = new ResultCallback();
-        handler.verifyCredentials(cb);
-        while (!cb.invoked) {
-            synchronized (this){
-                try {
-                    wait(200);
-                } catch(InterruptedException e) {
-                    speak("There was an error validating your credentials. Please login" +
-                            "by saying, 'Twitter login' or 'Twitter settings'");
-                    return;
-                }
+        AsyncAction verifyAction = handler.verifyCredentials();
+        verifyAction.registerOnErrorListener(new ActionHandlerInterfaces.IHandleActionError() {
+            @Override
+            public void onActionError(ActionBase action, Exception e) {
+                queueSpeech("There was an error validating your credentials. Please login" +
+                        "by saying, 'Twitter login' or 'Twitter settings'");
+                stopSelf();
             }
-        }
-        if (!cb.result) {
-            speak("There was an error validating your credentials. Please login" +
-                    "by saying, 'Twitter login' or 'Twitter settings'");
-            return;
-        }
+        });
+        verifyAction.registerOnSuccessListener(new ActionHandlerInterfaces.IHandleActionSuccess() {
+            @Override
+            public void onActionSuccess(ActionBase action) {
+                String newText = text.replaceFirst("[T|t]witter", "");
+                newText = newText.replaceFirst("[T|t]weet", "");
+                newText = newText.trim();
 
-        boolean containsYes = false;
-        String outputText = handler.twitterify(text);
-        do {
-            // If we are logged in, then we should tweet!
-
-            speak("You said:");
-            speak(outputText);
-            String[] poss = queryUser("Do you want to post? Yes to post, no to re-record, quit to stop..",
-                    "I did not understand. Please repeat Yes, No, or quit", true, false);
-
-
-            for (String s : poss) {
-                if (s.equalsIgnoreCase("yes")) {
-                    containsYes = true;
-                }
-                if (s.equalsIgnoreCase("quit")) {
-                    speak("Cancelling");
-                    return;
-                }
+                // Handle Speech inputs
+                String outputText = handler.twitterify(newText);
+                handleSpeechInput(outputText);
             }
-            if (!containsYes) {
-                String[] tweets = queryUser("Please repeat your tweet.",
-                        "I'm sorry, there seems to be a problem recognizing your voice",
-                        true, false);
-                Log.d("Tweeter", "Possibilities: " + Arrays.toString(tweets));
-                if (tweets.length > 0) {
-                    outputText = handler.twitterify(tweets[0]);
-                } else {
-                    outputText = "";
+        });
+        queueAction(verifyAction, true);
+    }
+
+    private void handleSpeechInput(final String outputText)
+    {
+        // If we are logged in, then we should tweet!
+        queueSpeech("You said:");
+        queueSpeech(outputText);
+
+        // This handler responds to queries approriately.
+        final UtilInterfaces.IHandleSpeechResults verifyAction = new UtilInterfaces.IHandleSpeechResults() {
+            @Override
+            public void resultsAvailable(String[] strings) {
+                boolean containsYes = false;
+                boolean containsQuit = false;
+                for (String s : strings) {
+                    if (s.equalsIgnoreCase("yes")) {
+                        containsYes = true;
+                    } else if (s.equalsIgnoreCase("quit")) {
+                        containsQuit = true;
+                    }
                 }
-            }
-        } while(!containsYes);
-
-
-        cb = new ResultCallback();
-        handler.tweet(outputText, -1, cb);
-
-        Log.d("TWITTER", "SPOKEN: " + text);
-        Log.d("TWITTER", "TWEETED: " + outputText);
-        // Determine Success
-        while (!cb.invoked) {
-            synchronized (this){
-                try {
-                    wait(200);
-                } catch(InterruptedException e) {
-                    e.printStackTrace();
+                if (containsQuit) {
+                    queueSpeech("Cancelling", true, new ActionHandlerInterfaces.IHandleActionSuccess() {
+                        @Override
+                        public void onActionSuccess(ActionBase action) {
+                            Log.d("TWITTER", "DONE");
+                            shutdown();
+                        }
+                    });
                 }
+                else if (!containsYes) {
+                    queryUser("Please repeat your tweet.",
+                            "I'm sorry, there seems to be a problem recognizing your voice",
+                            true, false, null, new UtilInterfaces.IHandleSpeechResults() {
+                                @Override
+                                public void resultsAvailable(String[] strings) {
+                                    handleSpeechInput(strings[0]);
+                                }
+                            }
+                    );
+                }
+                else {
+                    performTweet(new String[]{outputText});
+                }
+
             }
-        }
-        if (cb.result) {
-            speak("Tweet success!");
-        } else {
-            speak("Tweet failed.");
-        }
-        Log.d("TWITTER", "DONE");
+        };
+        queryUser("Do you want to post? Yes to post, no to re-record, quit to stop..",
+            "I did not understand. Please repeat Yes, No, or quit", true, false,
+            null, verifyAction
+        );
+
+
 
     }
 
-    class ResultCallback implements BooleanCallback {
-        public boolean invoked = false;
-        public boolean result = true;
+    private void performTweet(String[] tweets) {
+        Log.d("Tweeter", "Possibilities: " + Arrays.toString(tweets));
+        if (tweets.length > 0) {
+            ActionBase action = handler.tweet(handler.twitterify(tweets[0]), -1);
+            action.registerOnSuccessListener(new ActionHandlerInterfaces.IHandleActionSuccess() {
+                @Override
+                public void onActionSuccess(ActionBase action) {
+                    queueSpeech("Tweet Success", true, new ActionHandlerInterfaces.IHandleActionSuccess() {
+                        @Override
+                        public void onActionSuccess(ActionBase action) {
+                            Log.d("TWITTER", "DONE");
+                            shutdown();
+                        }
+                    });
+                }
+            });
+            action.registerOnErrorListener(new ActionHandlerInterfaces.IHandleActionError() {
+                @Override
+                public void onActionError(ActionBase action, Exception e) {
+                    queueSpeech("Tweet failed - More than 140 character spoken. Try again." , true, new ActionHandlerInterfaces.IHandleActionSuccess() {
+                        @Override
+                        public void onActionSuccess(ActionBase action) {
+                            Log.d("TWITTER", "DONE");
+                            shutdown();
+                        }
+                    });
+                }
+            });
+            queueAction(action, true);
 
-        @Override
-        public void run(boolean bool) {
-            invoked = true;
-            if (!bool) {
-                result = false;
-            }
+        } else {
+            handler.tweet("", -1);
         }
-    };
+    }
 
+    @Override
+    protected void onInitialized() {
+
+    }
 
 }

@@ -1,10 +1,50 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="mystech.speakmetwitterplugin.app">
+    package="mystech.speakmetwitterplugin.app.twitter">
 
     <application android:allowBackup="true"
         android:label="@string/app_name"
         android:icon="@drawable/ic_launcher"
         android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".AuthorizePluginActivity"
+            android:label="Authorize Activity" >
+            <meta-data
+                android:name="speak.me.keywords"
+                android:value="twitter,settings" />
+
+            <intent-filter>
+                <action android:name="speak.me.action.PICK_PLUGIN" />
+
+                <category android:name="speak.me.category.DEFAULT_PLUGIN_CATEGORY" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".TwitterTweetService"
+            android:label="TweeterService" >
+            <meta-data
+                android:name="speak.me.keywords"
+                android:value="twitter,tweet" />
+
+            <intent-filter>
+                <action android:name="speak.me.action.PICK_PLUGIN" />
+
+                <category android:name="speak.me.category.DEFAULT_PLUGIN_CATEGORY" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".TwitterTimelineService"
+            android:label="ReaderService" >
+            <meta-data
+                android:name="speak.me.keywords"
+                android:value="twitter,read,tweets" />
+
+            <intent-filter>
+                <action android:name="speak.me.action.PICK_PLUGIN" />
+
+                <category android:name="speak.me.category.DEFAULT_PLUGIN_CATEGORY" />
+            </intent-filter>
+        </service>
 
     </application>
 

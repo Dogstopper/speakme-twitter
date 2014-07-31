@@ -18,7 +18,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import mystech.speakme.plugin.app.SpeakMePluginActivity;
+import mystech.speakme.plugin.SpeakMePluginActivity;
+import mystech.speakme.plugin.actions.ActionBase;
+import mystech.speakme.plugin.actions.ActionHandlerInterfaces;
+import mystech.speakme.plugin.actions.AsyncAction;
 import twitter4j.auth.AccessToken;
 
 public class AuthorizePluginActivity extends SpeakMePluginActivity {
@@ -194,7 +197,7 @@ public class AuthorizePluginActivity extends SpeakMePluginActivity {
                 protected void onPostExecute(Boolean result)
                 {
                     if (result) {
-                        speak("Login successful.");
+                        queueSpeech("Login successful.");
                     }
                 }
             }.execute().get();
@@ -202,21 +205,20 @@ public class AuthorizePluginActivity extends SpeakMePluginActivity {
 
         }
 
-        speak("Loading Friends and Contacts.");
-        mTwitterHandler.loader.execute();
-        try {
-            mTwitterHandler.loader.get(30000, TimeUnit.MILLISECONDS); // Forces the thread to wait.
-            speak("Friends and contacts loaded.");
-        } catch (Exception e) {
-            speak("Friends and contacts partially loaded.");
-        }
+        queueSpeech("Loading Friends and Contacts.");
+        AsyncAction loader = mTwitterHandler.getLoaderAction();
+        loader.registerOnSuccessListener(new ActionHandlerInterfaces.IHandleActionSuccess() {
+            @Override
+            public void onActionSuccess(ActionBase actionBase) {
+                // Return the result to the activity that created it (MainActivity)
+                Intent returnIntent = new Intent();
+                returnIntent.putExtra(AuthorizePluginActivity.RESULT_SUCCESS,true);
+                setResult(RESULT_OK, returnIntent);
 
-        // Return the result to the activity that created it (MainActivity)
-        Intent returnIntent = new Intent();
-        returnIntent.putExtra(AuthorizePluginActivity.RESULT_SUCCESS,true);
-        setResult(RESULT_OK, returnIntent);
-
-        finish();
+                finish();
+            }
+        });
+        queueAction(loader, true);
     }
 
     private void onAuthenticationFailed() {
@@ -225,8 +227,18 @@ public class AuthorizePluginActivity extends SpeakMePluginActivity {
         returnIntent.putExtra(AuthorizePluginActivity.RESULT_SUCCESS,false);
         setResult(RESULT_OK,returnIntent);
 
-        speak("Login unsuccessful.");
+        queueSpeech("Login unsuccessful.");
 
         finish();
+    }
+
+    @Override
+    protected void onInitialized() {
+
+    }
+
+    @Override
+    protected void performAction(String s) {
+
     }
 }
