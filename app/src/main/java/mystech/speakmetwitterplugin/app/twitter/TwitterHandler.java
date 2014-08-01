@@ -286,7 +286,7 @@ public class TwitterHandler {
             public void executeAction() {
                 try {
                     m_twitter.verifyCredentials(); //This throws an exception when verification fails
-                    onActionComplete();
+                    onActionSuccess();
                 } catch(TwitterException e) {
                     if(e.getErrorCode() != 215) //215 is the error code for the access token is invalid
                         Log.e("LazyTweeter", "ERROR: " + e);

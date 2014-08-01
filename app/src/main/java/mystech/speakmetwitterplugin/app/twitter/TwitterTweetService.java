@@ -31,20 +31,32 @@ public class TwitterTweetService extends SpeakMePluginService {
     }
 
     @Override
+    protected void onInitialized() {
+        queueAction(handler.getLoaderAction(),true);
+    }
+
+    @Override
     public void performAction(final String text) {
+        Log.d("TWITTER", "performAction");
         // Check that we're logged in.
         AsyncAction verifyAction = handler.verifyCredentials();
         verifyAction.registerOnErrorListener(new ActionHandlerInterfaces.IHandleActionError() {
             @Override
             public void onActionError(ActionBase action, Exception e) {
                 queueSpeech("There was an error validating your credentials. Please login" +
-                        "by saying, 'Twitter login' or 'Twitter settings'");
-                stopSelf();
+                        "by saying, 'Twitter login' or 'Twitter settings'", true, new ActionHandlerInterfaces.IHandleActionSuccess() {
+                    @Override
+                    public void onActionSuccess(ActionBase action) {
+                        Log.d("TWITTER", "DONE");
+                        shutdown();
+                    }
+                });
             }
         });
         verifyAction.registerOnSuccessListener(new ActionHandlerInterfaces.IHandleActionSuccess() {
             @Override
             public void onActionSuccess(ActionBase action) {
+                Log.d("TWITTER", "Login Verified");
                 String newText = text.replaceFirst("[T|t]witter", "");
                 newText = newText.replaceFirst("[T|t]weet", "");
                 newText = newText.trim();
@@ -144,11 +156,6 @@ public class TwitterTweetService extends SpeakMePluginService {
         } else {
             handler.tweet("", -1);
         }
-    }
-
-    @Override
-    protected void onInitialized() {
-
     }
 
 }

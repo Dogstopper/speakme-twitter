@@ -218,7 +218,7 @@ public class AuthorizePluginActivity extends SpeakMePluginActivity {
                 finish();
             }
         });
-        queueAction(loader, true);
+        queueAction(loader, false);
     }
 
     private void onAuthenticationFailed() {
